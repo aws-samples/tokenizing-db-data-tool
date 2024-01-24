@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "serverless": "^3.38.0"
+  },
+  "devDependencies": {
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-step-functions": "^3.13.1"
+  }
+}

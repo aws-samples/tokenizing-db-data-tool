@@ -1,0 +1,197 @@
+Resources:
+  ECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      RepositoryName: ${self:service}
+  DBTokenizationBatchComputeEnv:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      State: ENABLED
+      ComputeEnvironmentName: ${self:custom.batch.common.computeEnv}
+      ComputeResources:
+        Type: FARGATE
+        MaxvCpus: 256
+        Subnets: ${file(vpc/${self:provider.stage}.yml):Subnets}
+        SecurityGroupIds: ${file(vpc/${self:provider.stage}.yml):SecurityGroupIds}
+  DBTokenizationBatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: ${self:custom.batch.common.jobQueue}
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref DBTokenizationBatchComputeEnv
+      State: ENABLED
+      Priority: 1
+  DBTokentizationFailedTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "DBTokentization Workflow Failed"
+      Subscription:
+        - Endpoint: xiaobaoo@amazon.com
+          Protocol: Email
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /${self:custom.batch.common.machineName}/log
+      RetentionInDays: 14
+  JobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /${self:custom.batch.common.machineName}-Jobs/log
+      RetentionInDays: 14
+  JobExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'ecs-tasks.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ${self:custom.batch.common.machineName}-Jobs-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - secretsmanager:Describe*
+                  - secretsmanager:List*
+                  - secretsmanager:GetSecretValue
+                Resource: arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:tokenize_key*
+                Effect: Allow
+              - Action:
+                  - rds:Describe*
+                  - rds:Create*
+                  - rds:Modify*
+                  - rds:Delete*
+                  - rds:Restore*
+                  - rds:CopyDBSnapshot
+                  - rds:AddTagsToResource
+                  - rds:RemoveTagsFromResource
+                Resource: 
+                  - arn:aws:rds:${aws:region}:${aws:accountId}:db:demo-*
+                  - arn:aws:rds:${aws:region}:${self:custom.batch.common.preprdAccount}:snapshot:demo-*
+                  - arn:aws:rds:${aws:region}:${self:custom.batch.common.prdAccount}:snapshot:demo-*
+                  - arn:aws:rds:${aws:region}:${aws:accountId}:og:default:mysql-8-0
+                  - arn:aws:rds:${aws:region}:${aws:accountId}:subgrp:default
+                  - arn:aws:rds:${aws:region}:${aws:accountId}:pg:default.mysql8.0
+                Effect: Allow
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.batch.common.machineName}-Role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ${self:custom.batch.common.machineName}-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - ssm:GetParameter
+                Resource: 
+                  - arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/demo-db-tokenize-schema
+                Effect: Allow
+              - Action:
+                  - batch:SubmitJob
+                  - batch:DescribeJobs
+                  - batch:TerminateJob
+                Resource:
+                  - !Ref DBTokenizationBatchJobQueue
+                  - arn:aws:batch:${aws:region}:${aws:accountId}:job-definition/db-tokenization-*
+                Effect: Allow
+              - Action:
+                  - logs:CreateLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:PutResourcePolicy
+                  - logs:Describe*
+                  - logs:List*
+                  - logs:Get*
+                Resource:
+                  - arn:aws:logs:${aws:region}:${aws:accountId}:log-group:/${self:custom.batch.common.machineName}/log*
+                  - arn:aws:logs:${aws:region}:${aws:accountId}:log-group:/${self:custom.batch.common.machineName}-Jobs/log*
+                Effect: Allow
+              - Action:
+                  - events:PutTargets
+                  - events:PutRule
+                  - events:PutEvents
+                  - events:DescribeRule
+                Resource: 
+                  - arn:aws:events:${aws:region}:${aws:accountId}:rule/${self:custom.batch.common.eventBus}/*
+                  - arn:aws:events:${aws:region}:${aws:accountId}:event-bus/${self:custom.batch.common.eventBus}
+                Effect: Allow
+              - Action:
+                  - sns:Publish
+                Resource: !Ref DBTokentizationFailedTopic
+                Effect: Allow
+  ECRDKREndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.ecr.dkr
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+  ECRAPIEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.ecr.api
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.ssm
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+  LogEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.logs
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+  RDSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.rds
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      ServiceName: com.amazonaws.${aws:region}.s3
+      VpcEndpointType: Gateway
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}
+      RouteTableIds: ${file(vpc/${self:provider.stage}.yml):RouteTableIds}
+  SMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: True
+      ServiceName: com.amazonaws.${aws:region}.secretsmanager
+      SubnetIds: ${file(vpc/${self:provider.stage}.yml):Subnets}
+      VpcEndpointType: Interface
+      VpcId: ${file(vpc/${self:provider.stage}.yml):VpcId}

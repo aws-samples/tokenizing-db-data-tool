@@ -1,0 +1,69 @@
+# importer copy snapshot from prod ===> recreate DB ===> delete oldDB ===> rename newDB
+validate: true
+stateMachines:
+  DBImportMachine:
+    name: ${self:custom.batch.common.machineName}
+    loggingConfig:
+      level: ERROR
+      includeExecutionData: true
+      destinations:
+        - Fn::GetAtt: [StateMachineLogGroup, Arn]
+    events:
+      - eventBridge:
+          eventBusName: ${self:custom.batch.common.eventBus}
+          event:
+            source:
+              - 'db-tokenization'
+            detail-type:
+              - "snapshot_created"
+            detail:
+              Message:
+                - 'DB Tokenized Snapshot Created'
+    definition:
+      Comment: 'compass-db-masking importer'
+      StartAt: '6-copySnapshot'
+      States:
+        '6-copySnapshot':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.importer.snapshotJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.importer.snapshotJob}
+          Next: '7-restoreFromSnapshot'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '7-restoreFromSnapshot':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.importer.restoreJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.importer.restoreJob}
+          Next: '8-rename'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '8-rename':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.importer.renameJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.importer.renameJob}
+          End: true
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        'Send Failure Message':
+          Type: Task
+          Resource: arn:aws:states:::sns:publish
+          Parameters:
+            TopicArn:
+              Ref: DBTokentizationFailedTopic
+            "Message.$": "$"
+          End: true

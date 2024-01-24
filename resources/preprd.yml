@@ -1,0 +1,115 @@
+Resources:
+  DBTokentizationEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ${self:custom.batch.common.eventBus}
+  ProdEventBusToPreprdEventBusRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: PutEventsOnPreprdEventBus
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'events:PutEvents'
+                Resource: !GetAtt DBTokentizationEventBus.Arn
+  DBTokenizationEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: This rule is used to notify preprd Step Functions when prd DBTokenization snapshot generated.
+      EventBusName: arn:aws:events:${aws:region}:${self:custom.batch.common.prdAccount}:event-bus/db-tokenization-prd-EventBus
+      State: ENABLED
+      EventPattern:
+        source:
+          - 'db-tokenization'
+        detail-type:
+          - 'snapshot_created'
+        detail:
+          Message:
+            - 'DB Tokenized Snapshot Created'
+      Targets:
+        - Arn: !GetAtt DBTokentizationEventBus.Arn
+          RoleArn: !GetAtt ProdEventBusToPreprdEventBusRole.Arn
+          Id: 'db-tokenization'
+          DeadLetterConfig:
+            Arn: arn:aws:sqs:${aws:region}:${self:custom.batch.common.prdAccount}:db-tokenization-prd-DLQ
+  SnapshotJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.importer.snapshotJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./6_copy_snapshot.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.importer.snapshotJob}
+  RestoreJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.importer.restoreJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./7_restore_from_snapshot.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.importer.restoreJob}
+  RenameJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.importer.renameJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./8_rename.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.importer.renameJob}

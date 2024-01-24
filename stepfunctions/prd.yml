@@ -1,0 +1,114 @@
+# creator tmp DB  ===> masking ===> snapshot ===> delete tmp DB
+validate: true
+stateMachines:
+  DBTokenizeMachine:
+    name: ${self:custom.batch.common.machineName}
+    role: 
+      Fn::GetAtt: [StateMachineRole, Arn]
+    loggingConfig:
+      level: ERROR
+      includeExecutionData: true
+      destinations:
+        - Fn::GetAtt: [StateMachineLogGroup, Arn]
+    events:
+      - schedule:
+          rate: cron(0 12 1 * ? *)
+          enabled: false
+    definition:
+      Comment: 'db-tokenization creator'
+      StartAt: '1-restoreDBFromSnapshot'
+      States:
+        '1-restoreDBFromSnapshot':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.creator.restoreJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.creator.restoreJob}
+          Next: '1.5-getDBTokenizeSchema'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '1.5-getDBTokenizeSchema':
+          Type: Task
+          Parameters:
+            Name: demo-db-tokenize-schema
+          Resource: arn:aws:states:::aws-sdk:ssm:getParameter
+          ResultSelector:
+            "schema.$": "States.StringToJson($.Parameter.Value)"
+          Next: '2-tokenize'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '2-tokenize':
+          Type: Map
+          InputPath: "$.schema"
+          ItemsPath: "$.items"
+          MaxConcurrency: 10
+          Iterator:
+            StartAt: 'tokenize-each-table'
+            States:
+              'tokenize-each-table':
+                Type: Task
+                Resource: arn:aws:states:::batch:submitJob.sync
+                Parameters:
+                  JobDefinition: ${self:custom.batch.creator.tokenizeJob}
+                  JobQueue: ${self:custom.batch.common.jobQueue}
+                  JobName: ${self:custom.batch.creator.tokenizeJob}
+                  Parameters:
+                    "table_config.$": "States.JsonToString($)"
+                End: true
+          Next: '3-createDBSnapshot'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '3-createDBSnapshot':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.creator.snapshotJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.creator.snapshotJob}
+          Next: '4-deleteTmpDB'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '4-deleteTmpDB':
+          Type: Task
+          Resource: arn:aws:states:::batch:submitJob.sync
+          Parameters:
+            JobDefinition: ${self:custom.batch.creator.deleteJob}
+            JobQueue: ${self:custom.batch.common.jobQueue}
+            JobName: ${self:custom.batch.creator.deleteJob}
+          Next: '5-triggerPreprdWorkflow'
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        '5-triggerPreprdWorkflow':
+          Type: Task
+          Resource: arn:aws:states:::events:putEvents
+          Parameters:
+            Entries:
+              - Source: 'db-tokenization'
+                EventBusName: ${self:custom.batch.common.eventBus}
+                DetailType: 'snapshot_created'
+                Detail:
+                  Message: 'DB Tokenized Snapshot Created'
+          End: true
+          Catch:
+            - ErrorEquals: [States.ALL]
+              ResultPath: "$.error"
+              Next: "Send Failure Message"
+        'Send Failure Message':
+          Type: Task
+          Resource: arn:aws:states:::sns:publish
+          Parameters:
+            TopicArn:
+              Ref: DBTokentizationFailedTopic
+            "Message.$": "$"
+          End: true

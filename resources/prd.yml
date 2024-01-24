@@ -1,0 +1,131 @@
+Resources:
+  DBTokentizationEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ${self:custom.batch.common.eventBus}
+  DBTokentizationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:custom.batch.creator.eventTargetDLQ}
+  DBTokenizeCrossAccountPublishStatement:
+    Type: AWS::Events::EventBusPolicy
+    Properties:
+      EventBusName: !Ref DBTokentizationEventBus
+      StatementId: DBTokenizeCrossAccountPublishStatement
+      Statement:
+        Effect: Allow
+        Principal:
+            AWS: !GetAtt StateMachineRole.Arn
+        Action: events:PutEvents
+        Resource: !GetAtt DBTokentizationEventBus.Arn
+  DBTokenizeImporterRuleCreationStatement:
+    Type: AWS::Events::EventBusPolicy
+    Properties:
+      EventBusName: !Ref DBTokentizationEventBus
+      StatementId: DBTokenizeImporterRuleCreationStatement
+      Statement:
+        Effect: Allow
+        Principal:
+          AWS: arn:aws:iam::${self:custom.batch.common.preprdAccount}:user/admin
+        Action:
+            - "events:PutRule"
+            - "events:DeleteRule"
+            - "events:DescribeRule"
+            - "events:DisableRule"
+            - "events:EnableRule"
+            - "events:PutTargets"
+            - "events:RemoveTargets"
+        Resource:
+          - arn:aws:events:${aws:region}:${aws:accountId}:rule/${self:custom.batch.common.eventBus}/*
+  RestoreJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.creator.restoreJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn: !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./1_restore_from_snapshot.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.creator.restoreJob}
+  TokenizeJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.creator.tokenizeJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 4
+          - Type: 'MEMORY'
+            Value: 8192
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./2_db_tokenization.py', '-c', "Ref::table_config"]
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.creator.tokenizeJob}
+  SnapshotJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.creator.snapshotJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./3_create_snapshot.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.creator.snapshotJob}
+  DeleteJobDef:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      Type: container
+      JobDefinitionName: ${self:custom.batch.creator.deleteJob}
+      PlatformCapabilities:
+        - FARGATE
+      ContainerProperties:
+        Image: ${aws:accountId}.dkr.ecr.ap-southeast-1.amazonaws.com/${self:service}:latest
+        ResourceRequirements:
+          - Type: 'VCPU'
+            Value: 1
+          - Type: 'MEMORY'
+            Value: 2048
+        ExecutionRoleArn: !GetAtt JobExecutionRole.Arn
+        JobRoleArn:  !GetAtt JobExecutionRole.Arn
+        Environment: ${self:custom.env}
+        Command: ['./4_delete_tmp_db.py']
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            "awslogs-group": !Ref JobLogGroup
+            "awslogs-stream-prefix": ${self:custom.batch.creator.deleteJob}

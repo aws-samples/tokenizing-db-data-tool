@@ -1,0 +1,7 @@
+Subnets:
+  - <subnet ID>
+SecurityGroupIds:
+  - <securityGroup ID>
+VpcId: <VPC ID>
+RouteTableIds:
+  - <Route Table ID>

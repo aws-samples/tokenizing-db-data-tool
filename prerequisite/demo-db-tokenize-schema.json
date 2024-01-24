@@ -1,0 +1,36 @@
+{
+        "items": [
+            {
+                "table": "dept_emp",
+                "tokenize_fields": {
+                    "int": ["emp_no"]
+                }
+            },
+            {
+                "table": "dept_manager",
+                "tokenize_fields": {
+                    "int": ["emp_no"]
+                }
+            },
+            {
+                "table": "titles",
+                "tokenize_fields": {
+                    "int": ["emp_no"]
+                }
+            },
+            {
+                "table": "employees",
+                "tokenize_fields": {
+                    "int": ["emp_no"],
+                    "date": ["birth_date"],
+                    "string": ["first_name", "last_name"]
+                }
+            },
+            {
+                "table": "salaries",
+                "tokenize_fields": {
+                    "int": ["emp_no"]
+                }
+            }
+        ]
+}

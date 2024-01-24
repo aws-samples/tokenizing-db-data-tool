@@ -1,0 +1,5 @@
+boto3
+mysql-connector-python
+ff3
+pandas
+passlib

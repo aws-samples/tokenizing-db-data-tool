@@ -1,0 +1,12 @@
+- Name: STAGE
+  Value: prd
+- Name: ORIGINAL_DBID
+  Value: "demo-prd"
+- Name: TMP_DBID
+  Value: "demo-prd-tmp"
+- Name: TMP_SNAPSHOT_NAME
+  Value: "demo-prd-tmp-snapshot"
+- Name: TARGET_AWS_ACCOUNT
+  Value: "<PREPRD ACCOUNT ID>" #the preprd aws account id which is target you want to import tokenized DB data
+- Name: REIGON
+  Value: "ap-southeast-1"

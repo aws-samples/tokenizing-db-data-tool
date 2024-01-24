@@ -1,0 +1,41 @@
+service: db-tokenization
+frameworkVersion: '3'
+deprecationNotificationMode: warn:summary
+
+plugins:
+  - serverless-step-functions
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'preprd'}
+  region: ap-southeast-1
+  profile: demo-${self:provider.stage}
+
+custom:
+  env: ${file(env/${self:provider.stage}.yml)}
+  batch:
+    common:
+      prdAccount: '<PRD ACCOUNT ID>'
+      preprdAccount: '<PREPRD ACCOUNT ID>'
+      computeEnv: ${self:service}-${self:provider.stage}-BatchComputeEnv
+      jobQueue: ${self:service}-${self:provider.stage}-BatchJobQueue
+      machineName: ${self:service}-${self:provider.stage}-Machine
+      eventBus: ${self:service}-${self:provider.stage}-EventBus
+    creator:
+      restoreJob: ${self:service}-${self:provider.stage}-RestoreJob
+      tokenizeJob: ${self:service}-${self:provider.stage}-TokenizeJob
+      snapshotJob: ${self:service}-${self:provider.stage}-SnapshotJob
+      deleteJob: ${self:service}-${self:provider.stage}-DeleteJob
+      eventRule: ${self:service}-${self:provider.stage}-EventRule
+      eventTargetDLQ: ${self:service}-${self:provider.stage}-DLQ
+    importer:
+      snapshotJob: ${self:service}-${self:provider.stage}-SnapshotJob
+      restoreJob: ${self:service}-${self:provider.stage}-RestoreJob
+      renameJob: ${self:service}-${self:provider.stage}-RenameJob
+
+resources:
+  - ${file(./resources/common.yml)}
+  - ${file(./resources/${self:provider.stage}.yml)}
+
+stepFunctions:
+  ${file(./stepfunctions/${self:provider.stage}.yml)}
