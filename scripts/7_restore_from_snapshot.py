@@ -7,7 +7,7 @@ stage = os.environ['STAGE']
 rds = rds()
 origin_db_name = os.environ['ORIGINAL_DBID']
 new_origin_db_name = f"{origin_db_name}-new"
-tmp_snapshot_name = 'demo-prd-tmp-snapshot'
+tmp_snapshot_name = os.environ['TMP_SNAPSHOT_NAME']
 new_tmp_snapshot_name = f"{tmp_snapshot_name}-new"
 
 @timeit

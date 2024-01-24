@@ -6,7 +6,11 @@
   Value: "demo-prd-tmp"
 - Name: TMP_SNAPSHOT_NAME
   Value: "demo-prd-tmp-snapshot"
+- Name: DB_USER
+  Value: "<DB USER>"
+- Name: DB_PASS
+  Value: "<DB PASS>"
 - Name: TARGET_AWS_ACCOUNT
   Value: "<PREPRD ACCOUNT ID>" #the preprd aws account id which is target you want to import tokenized DB data
-- Name: REIGON
+- Name: REGION
   Value: "ap-southeast-1"

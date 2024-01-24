@@ -20,6 +20,8 @@ print(config)
 rds = rds()
 stage = os.environ['STAGE']
 tmp_db_name = os.environ['TMP_DBID']
+db_user = os.environ['DB_USER']
+db_pass = os.environ['DB_PASS']
 secret = sm_get('tokenize_key')['SecretString']
 secret = json.loads(secret)
 
@@ -34,11 +36,14 @@ def main():
     table_update(config)
 
 def get_conn_mysql():
+    tmp_db = find_db(rds, tmp_db_name)
+    endpoint = tmp_db['Endpoint']['Address']
     conn = mysql.connector.connect(
-        user='myrdsuser',
-        password='myrdspassword',
-        host=f'{tmp_db_name}.c9svkfo8ci5s.ap-southeast-1.rds.amazonaws.com',
-        database='employees')
+        user=db_user,
+        password=db_pass,
+        host=endpoint,
+        database='employees'
+    )
     return conn
 
 def fpe_str_tokenize(plaintext):

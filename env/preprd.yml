@@ -2,8 +2,6 @@
   Value: preprd
 - Name: ORIGINAL_DBID
   Value: "demo-preprd"
-- Name: TMP_DBID
-  Value: "demo-prd-tmp"
 - Name: TMP_SNAPSHOT_NAME
   Value: "demo-prd-tmp-snapshot"
 - Name: SOURCE_AWS_ACCOUNT
