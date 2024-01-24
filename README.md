@@ -37,7 +37,7 @@ In this example, we are utilizing the "[Employee Sample](https://dev.mysql.com/d
 
 In this example, we have defined the tokenization schema, which specifies the target tables and columns that need to be tokenized. The tokenization schema is structured as follows:
 
-```
+```json
 {
     "items": [
         {
@@ -79,7 +79,7 @@ In this example, we have defined the tokenization schema, which specifies the ta
 The FPE algorithm requires two essential parameters:
 * Encryption Key: This key is used by the FPE algorithm to encrypt a string and produce encrypted text, or to decrypt encrypted text. The same key value must be used during decryption to correctly reverse the encryption process. For this example, the [ff3](https://pypi.org/project/ff3/) library mandates the **encryption key's length to be 16, 24, or 32 bytes**. In this implementation, we generate the encryption key using the passlib Python library, utilizing a salt and password.
 
-```
+```python
 import sys
 password='Test'
 salt=''
@@ -90,7 +90,7 @@ Generated key: 93473a8c268bc103bc8d9cbc1922faf7135e5e7d8ee749bda6611b60cc68db43
 
 * Tweak: Tweak is an additional input parameter utilized in FPE algorithms to enhance the encryption process's security and flexibility. The same tweak value must be used during decryption to ensure the correct decryption of the data. For this example, the ff3 library requires the **tweak's length to be either 7 bytes or 8 bytes**. We generate the tweak value using the secrets Python library.
 
-```
+```python
 import secrets
 # Generate a 128-bit (16-byte) random tweak value
 tweak = secrets.token_bytes(8).hex()
@@ -100,7 +100,7 @@ Generated tweak: 37a057eca09d2413
 
 Below is a demo code using the ff3 Python library:
 
-```
+```python
 from ff3 import FF3Cipher
 from passlib.utils.pbkdf2 import pbkdf2
 import sys
